@@ -5,58 +5,66 @@ import org.jcsp.lang.*;
  * and Consumer2 classes.
  */
 public class Buffer implements CSProcess {
-    private One2OneChannelInt[] in; // Input from Producer
-    private One2OneChannelInt[] req; // Request for data from Consumer
-    private One2OneChannelInt[] out; // Output to Consumer
-    // The buffer itself
-    private int[] buffer = new int[10];
-    // Subscripts for buffer
-    int hd = -1;
-    int tl = -1;
+    private One2OneChannelInt[] consumers;
+    private One2OneChannelInt[] producers;
 
-    public Buffer(final One2OneChannelInt[] in, final One2OneChannelInt[] req, final One2OneChannelInt[] out) {
-        this.in = in;
-        this.req = req;
-        this.out = out;
+    private final int capacity;
+
+    private int id;
+
+    public Buffer(One2OneChannelInt[] producers,
+                  One2OneChannelInt[] consumers, int id) {
+        this(producers, consumers, id,  5);
     } // constructor
 
+    public Buffer(One2OneChannelInt[] producers,
+                  One2OneChannelInt[] consumers, int id, int capacity) {
+        this.capacity = capacity;
+        this.consumers = consumers;
+        this.producers = producers;
+        this.id = id;
+
+    } // constructor
+
+
     public void run() {
-        final Guard[] guards = {in[0].in(), in[1].in(), req[0].in(), req[1].in()};
+        final Guard[] guards;
+
+        int used = 0;
+
+        guards = new Guard[consumers.length + producers.length];
+        boolean[] preCondition = new boolean[guards.length];
+        for (int i = 0; i < producers.length; i++) {
+            guards[i] = producers[i].in();
+            preCondition[i] = (capacity - used > 0);
+        }
+        for (int i = 0; i < consumers.length; i++) {
+            guards[i + producers.length] = consumers[i].in();
+            preCondition[i + producers.length] = (used > 0);
+        }
+
+
         final Alternative alt = new Alternative(guards);
-        int countdown = 4; // Number of processes running
-        while (countdown > 0) {
-            int index = alt.select();
-            switch (index) {
-                case 0:
-                case 1: // A Producer is ready to send
-                    if (hd < tl + 11) // Space available
-                    {
-                        int item = in[index].in().read();
-                        if (item < 0)
-                            countdown--;
-                        else {
-                            hd++;
-                            buffer[hd % buffer.length] = item;
-                        }
-                    }
-                    break;
-                case 2:
-                case 3: // A Consumer is ready to read
-                    if (tl < hd) // Item(s) available
-                    {
-                        req[index - 2].in().read(); // Read and discard request
-                        tl++;
-                        int item = buffer[tl % buffer.length];
-                        out[index - 2].out().write(item);
-                    } else if (countdown <= 2) // Signal consumer to end
-                    {
-                        req[index - 2].in().read(); // Read and discard request
-                        out[index - 2].out().write(-1); // Signal end
-                        countdown--;
-                    }
-                    break;
-            } // switch
+        boolean running = true;
+        while (running) {
+            for (int i = 0; i < producers.length; i++) {
+                preCondition[i] = (capacity - used > 0);
+            }
+            for (int i = 0; i < consumers.length; i++) {
+                preCondition[i + producers.length] = (used > 0);
+            }
+            int index = alt.fairSelect(preCondition);
+
+            if (index < producers.length){
+                producers[index].in().read();
+                used ++;
+            } else {
+                consumers[index - producers.length].in().read();
+                consumers[index - producers.length].out().write(1);
+                used--;
+            }
+            System.out.println("Buffer " + id + " used " + used);
         } // while
-        System.out.println("Buffer ended.");
+        System.out.println("Buffer " + id + " ended.");
     } // run
 } // class Buffer

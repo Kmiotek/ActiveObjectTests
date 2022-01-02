@@ -5,19 +5,28 @@ import org.jcsp.lang.*;
  * The random integers are in a given range [start...start+100)
  */
 public class Producer2 implements CSProcess {
-    private One2OneChannelInt channel;
-    private int start;
-    public Producer2 (final One2OneChannelInt out, int start) {
-        channel = out;
-        this.start = start;
+    private One2OneChannelInt[] bufferChannels;
+    private One2OneChannelInt supervisorChannel;
+    private final int id;
+
+    public Producer2 (final One2OneChannelInt supervisor, One2OneChannelInt[] bufferChannels, int id) {
+        supervisorChannel = supervisor;
+        this.id = id;
+        this.bufferChannels = bufferChannels;
     } // constructor
     public void run () {
-        int item;
-        for (int k = 0; k < 100; k++) {
-            item = (int)(Math.random()*100)+1+start;
-            channel.out().write(item);
+        boolean running = true;
+        while(running) {
+            System.out.println("Asking prod " + id);
+            supervisorChannel.out().write(1);
+            System.out.println("Getting answer prod " + id);
+            int index = supervisorChannel.in().read();
+            System.out.println("Got answer prod " + id);
+            if (index != -1) {
+                System.out.println("Communicating with buffer " + index + " prod " + id);
+                bufferChannels[index].out().write(1);
+            }
         } // for
-        channel.out().write(-1);
-        System.out.println("Producer" + start + " ended.");
+        System.out.println("Producer" + id + " ended.");
     } // run
 } // class Producer2
